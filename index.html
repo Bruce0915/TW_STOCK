@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股看盤中心</title>
+<style>
+:root{
+  --bg:#0b1020;--panel:#121a2b;--panel2:#182238;--border:#27334d;
+  --text:#edf2ff;--muted:#8e9ab3;--accent:#4f8cff;
+  --up:#ff5c67;--down:#39c98a;--warn:#f5bd4f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(135deg,#080d18,#10182a);color:var(--text);
+font-family:"Segoe UI","Microsoft JhengHei",Arial,sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{max-width:1500px;margin:auto;padding:18px}
+.header{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:16px}
+.brand{font-size:24px;font-weight:800;letter-spacing:.5px}
+.brand span{color:#6fa2ff}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--border);background:#172239;color:var(--text);padding:9px 13px;border-radius:8px}
+.btn:hover{background:#20304f}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:white}
+.btn.danger{color:#ff8990}
+.auto-status{font-size:12px;color:var(--down);background:rgba(57,201,138,.1);border:1px solid rgba(57,201,138,.3);padding:6px 10px;border-radius:6px;display:flex;align-items:center;gap:5px}
+.search{display:flex;gap:8px;margin-bottom:16px}
+.search input{flex:1;min-width:180px;background:#0e1728;border:1px solid var(--border);color:white;padding:11px 13px;border-radius:9px;outline:none}
+.search input:focus{border-color:var(--accent)}
+.search-results{position:absolute;z-index:20;background:#111a2b;border:1px solid var(--border);border-radius:9px;margin-top:4px;width:min(500px,calc(100% - 36px));overflow:hidden}
+.search-wrap{position:relative;flex:1}
+.result{padding:10px 13px;border-bottom:1px solid #202b41;cursor:pointer}
+.result:hover{background:#1c2a44}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.card{background:rgba(18,26,43,.94);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-weight:700}
+.market-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.metric{background:#0e1728;border:1px solid #202c43;border-radius:10px;padding:12px}
+.metric .name{font-size:13px;color:var(--muted)}
+.metric .value{font-size:21px;font-weight:800;margin-top:5px}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
+.chart{height:300px;position:relative}
+svg{width:100%;height:100%}
+.gridline{stroke:#24314a;stroke-width:1}
+.axis{fill:#71809d;font-size:11px}
+.line{fill:none;stroke:#65a0ff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.area{fill:url(#area)}
+.watch-table{width:100%;border-collapse:collapse}
+.watch-table th,.watch-table td{padding:10px 7px;border-bottom:1px solid #222d43;text-align:right;white-space:nowrap}
+.watch-table th{color:var(--muted);font-size:12px}
+.watch-table th:first-child,.watch-table td:first-child{text-align:left}
+.stock{font-weight:700}.company{color:var(--muted);font-size:12px;margin-left:5px}
+.star{border:0;background:none;color:#f5bd4f;font-size:18px;padding:2px 5px}
+.row-click{cursor:pointer}.row-click:hover{background:#172239}
+.detail{margin-top:14px}
+.detail-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.detail-code{font-size:27px;font-weight:800}.detail-name{color:var(--muted)}
+.detail-price{font-size:31px;font-weight:800}
+.tabs{display:flex;gap:5px;margin:12px 0}
+.tab{border:1px solid var(--border);background:#10192b;color:var(--muted);padding:7px 12px;border-radius:7px}
+.tab.active{background:#22365d;color:white;border-color:#3d65a5}
+.ranks{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.rank-list{list-style:none;margin:0;padding:0}
+.rank-list li{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #222d43}
+.empty{text-align:center;color:var(--muted);padding:30px}
+.footer{color:#687692;font-size:12px;margin-top:14px}
+.toast{position:fixed;right:20px;bottom:20px;background:#1d2a43;border:1px solid #3a4d70;padding:10px 14px;border-radius:8px;display:none;z-index:60}
+@media(max-width:950px){.grid{grid-template-columns:1fr}.market-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.app{padding:10px}.market-grid{grid-template-columns:1fr 1fr}.card{padding:12px}.watch-table{font-size:12px}.watch-table th:nth-child(4),.watch-table td:nth-child(4){display:none}.detail-head{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="header">
+    <div class="brand">📈 <span>台股</span>看盤中心 (即時連動走勢)</div>
+    <div class="toolbar">
+      <div class="auto-status" id="autoStatus">🟢 自動更新啟動中</div>
+      <button class="btn primary" id="refreshBtn">🔄 立即重新整理</button>
+      <button class="btn" id="exportBtn">⬇ 匯出設定</button>
+      <button class="btn" id="importBtn">⬆ 匯入設定</button>
+      <button class="btn" id="clearBtn">清空自選</button>
+    </div>
+  </div>
+
+  <div class="search">
+    <div class="search-wrap">
+      <input id="searchInput" placeholder="可輸入台股代號或名稱搜尋全部上市股票，例如：2330、台積電">
+      <div id="searchResults" class="search-results" hidden></div>
+    </div>
+    <button class="btn primary" id="addBtn">＋ 加入自選</button>
+  </div>
+
+  <section class="card" style="margin-bottom:14px">
+    <div class="card-title"><span>市場概況</span><span id="marketTime" style="font-size:12px;color:var(--muted)">等待更新...</span></div>
+    <div class="market-grid">
+      <div class="metric"><div class="name">加權指數</div><div class="value" id="marketTaiex">23,418.72</div></div>
+      <div class="metric"><div class="name">櫃買指數</div><div class="value" id="marketTpex">245.81 <small class="up">▲ +0.87%</small></div></div>
+      <div class="metric"><div class="name">資料庫狀態</div><div class="value" id="marketUpDown" style="font-size:16px">已載入全部股票</div></div>
+      <div class="metric"><div class="name">自選股數量</div><div class="value" id="marketValue">-- 檔</div></div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <div class="card-title">
+        <span id="chartTitle">2330 台積電 走勢 · 1日</span>
+        <select id="period" class="btn">
+          <option value="1d">1日</option>
+          <option value="5d">5日</option>
+          <option value="1m">1月</option>
+          <option value="3m">3月</option>
+          <option value="1y">1年</option>
+        </select>
+      </div>
+      <div class="chart"><svg id="chartSvg" viewBox="0 0 900 300" preserveAspectRatio="none"></svg></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>自選股</span><span id="watchCount" style="color:var(--muted);font-size:12px"></span></div>
+      <div style="overflow:auto">
+        <table class="watch-table">
+          <thead><tr><th>股票</th><th>成交價</th><th>漲跌</th><th>漲幅</th><th>成交量</th><th></th></tr></thead>
+          <tbody id="watchBody"></tbody>
+        </table>
+      </div>
+      <div id="emptyWatch" class="empty" hidden>尚未加入自選股<br><small>搜尋股票後按「加入自選」</small></div>
+    </section>
+  </div>
+
+  <section class="card detail">
+    <div class="detail-head">
+      <div>
+        <div class="detail-code" id="detailCode">2330 <span class="detail-name">台積電</span></div>
+        <div style="color:var(--muted);margin-top:4px" id="detailCompany">台灣積體電路製造</div>
+      </div>
+      <div style="text-align:right">
+        <div class="detail-price up" id="detailPrice">--</div>
+        <div class="up" id="detailChange">--</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="price">價格</button>
+      <button class="tab" data-tab="info">基本資料</button>
+      <button class="tab" data-tab="chip">籌碼</button>
+    </div>
+    <div id="detailContent"></div>
+  </section>
+
+  <div class="ranks" style="margin-top:14px">
+    <section class="card"><div class="card-title">🔥 自選股漲幅排行</div><ul class="rank-list" id="riseRank"></ul></section>
+    <section class="card"><div class="card-title">📊 自選股成交量排行</div><ul class="rank-list" id="volumeRank"></ul></section>
+  </div>
+
+  <div class="footer">※ 資料來源：台灣證券交易所 (支援多區間歷史走勢圖表)。</div>
+</div>
+
+<input type="file" id="fileInput" accept=".json,application/json" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+"use strict";
+
+let STOCKS = {
+ "2330":{name:"台積電",price:1080,change:22,volume:35420,open:1060,high:1085,low:1055},
+ "2317":{name:"鴻海",price:218,change:-3,volume:28910,open:221,high:222,low:216},
+ "2454":{name:"聯發科",price:1510,change:30,volume:12450,open:1480,high:1520,low:1475},
+ "2308":{name:"台達電",price:1075,change:15,volume:9810,open:1060,high:1080,low:1055}
+};
+
+let state = {
+  watchlist:["2330","2317","2454","2308"],
+  selected:"2330",
+  tab:"price",
+  period:"1d",
+  chartData: []
+};
+
+const $ = id => document.getElementById(id);
+const fmt = n => Number(n).toLocaleString("zh-TW",{maximumFractionDigits:2});
+const pct = s => (s.price && (s.price - s.change) !== 0 ? (s.change / (s.price - s.change) * 100) : 0);
+function cls(n){return n>0?"up":n<0?"down":"flat"}
+
+function toast(msg){
+  const el=$("toast"); el.textContent=msg; el.style.display="block";
+  clearTimeout(window.__toast); window.__toast=setTimeout(()=>el.style.display="none",2200);
+}
+
+const baseWorkerUrl = "https://twse-proxy.jingfong0915.workers.dev/";
+
+// 更新走勢區塊的標題函式
+function updateChartTitle() {
+  const s = STOCKS[state.selected];
+  const name = s ? s.name : state.selected;
+  const periodText = {"1d":"1日","5d":"5日","1m":"1月","3m":"3月","1y":"1年"}[state.period];
+  $("chartTitle").textContent = `${state.selected} ${name} 走勢 · ${periodText}`;
+}
+
+async function fetchAllStockList() {
+  try {
+    const targetUrl = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL";
+    const res = await fetch(`${baseWorkerUrl}?url=${encodeURIComponent(targetUrl)}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      data.forEach(item => {
+        const code = item.Code || item.code;
+        const name = item.Name || item.name;
+        const close = parseFloat((item.ClosingPrice || item.closingPrice || "0").replace(/,/g, ""));
+        const changeVal = parseFloat((item.Change || item.change || "0").replace(/,/g, ""));
+        const vol = parseInt((item.TradeVolume || item.tradeVolume || "0").replace(/,/g, ""), 10) / 1000;
+        if (code && name && !STOCKS[code]) {
+          STOCKS[code] = { name, price: isNaN(close)?0:close, change: isNaN(changeVal)?0:changeVal, volume: isNaN(vol)?0:Math.round(vol), open:close, high:close, low:close };
+        }
+      });
+      $("marketUpDown").textContent = `已載入 ${Object.keys(STOCKS).length} 檔台股`;
+    }
+  } catch (err) { console.warn("全市場清單載入失敗", err); }
+}
+
+function getMonthsToFetch(period) {
+  const count = period === "1y" ? 12 : period === "3m" ? 3 : period === "1m" ? 1 : 1;
+  const list = [];
+  const d = new Date();
+  for (let i = 0; i < count; i++) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    list.push(`${y}${m}01`);
+    d.setMonth(d.getMonth() - 1);
+  }
+  return list;
+}
+
+async function loadChartData() {
+  updateChartTitle(); // 確保每次載入時標題都是最新的
+  const code = state.selected;
+  const period = state.period;
+  const s = STOCKS[code];
+  
+  if (period === "1d") {
+    let seed = s ? s.price : 1000;
+    let v = s && s.open ? s.open : seed * 0.99;
+    const points = [v];
+    for(let i=1; i<42; i++){
+      v = (i === 41 && s) ? s.price : (v + (Math.sin(i*.7)*seed*.002) + ((i%3)-1)*seed*.0007);
+      points.push(v);
+    }
+    if (s) points[points.length - 1] = s.price;
+    state.chartData = points;
+    drawChart();
+    return;
+  }
+
+  const months = getMonthsToFetch(period);
+  let allPrices = [];
+
+  try {
+    for (const mStr of months) {
+      const targetUrl = `https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=${mStr}&stockNo=${code}`;
+      const res = await fetch(`${baseWorkerUrl}?url=${encodeURIComponent(targetUrl)}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json && Array.isArray(json.data)) {
+        json.data.forEach(row => {
+          const closePrice = parseFloat(row[6].replace(/,/g, ""));
+          if (!isNaN(closePrice)) allPrices.push(closePrice);
+        });
+      }
+    }
+
+    if (period === "5d") {
+      state.chartData = allPrices.slice(-5);
+    } else if (period === "1m") {
+      state.chartData = allPrices.slice(-22);
+    } else if (period === "3m") {
+      state.chartData = allPrices.slice(-66);
+    } else if (period === "1y") {
+      state.chartData = allPrices.slice(-250);
+    }
+
+    if (state.chartData.length === 0 && s) {
+      state.chartData = [s.price];
+    }
+  } catch (err) {
+    console.warn("載入歷史走勢失敗", err);
+    state.chartData = s ? [s.price] : [100, 105];
+  }
+  drawChart();
+}
+
+async function fetchWatchlistData() {
+  const d = new Date();
+  const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`;
+  
+  for (const code of state.watchlist) {
+    try {
+      const targetUrl = `https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=${dateStr}&stockNo=${code}`;
+      const res = await fetch(`${baseWorkerUrl}?url=${encodeURIComponent(targetUrl)}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json && Array.isArray(json.data) && json.data.length > 0) {
+        const latest = json.data[json.data.length - 1];
+        const vol = parseInt(latest[1].replace(/,/g, ""), 10) / 1000;
+        const open = parseFloat(latest[3].replace(/,/g, ""));
+        const high = parseFloat(latest[4].replace(/,/g, ""));
+        const low = parseFloat(latest[5].replace(/,/g, ""));
+        const close = parseFloat(latest[6].replace(/,/g, ""));
+        let changeVal = parseFloat(latest[7].replace(/<[^>]*>/g, "").trim()) || 0;
+
+        if (STOCKS[code]) {
+          STOCKS[code].price = isNaN(close) ? STOCKS[code].price : close;
+          STOCKS[code].change = changeVal;
+          STOCKS[code].volume = isNaN(vol) ? 0 : Math.round(vol);
+          STOCKS[code].open = isNaN(open) ? close : open;
+          STOCKS[code].high = isNaN(high) ? close : high;
+          STOCKS[code].low = isNaN(low) ? close : low;
+        }
+      }
+    } catch (err) {}
+  }
+
+  $("marketTime").textContent = "最後更新: " + new Date().toLocaleTimeString("zh-TW");
+  $("marketValue").textContent = `${state.watchlist.length} 檔`;
+  refreshUI();
+}
+
+function refreshUI() {
+  renderWatch();
+  renderDetail();
+  renderRanks();
+  updateChartTitle(); // 重新整理時也同步更新標題
+}
+
+function drawChart(){
+  const svg=$("chartSvg");
+  const points = state.chartData.length ? state.chartData : [100, 100];
+  const min=Math.min(...points), max=Math.max(...points), pad=(max-min)*.12||1;
+  const lo=min-pad, hi=max+pad;
+  const x=i=>30+i*(840/(Math.max(points.length-1, 1)));
+  const y=v=>265-(v-lo)/(hi-lo)*230;
+  const line=points.map((v,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)).join(" ");
+  const area=line+" L "+x(points.length-1)+" 270 L 30 270 Z";
+  let g="";
+  [0,1,2,3,4].forEach(i=>{
+    const yy=35+i*57.5;
+    g+=`<line x1="30" y1="${yy}" x2="870" y2="${yy}" class="gridline"/>`;
+    const val=hi-(hi-lo)*(i/4);
+    g+=`<text x="875" y="${yy+4}" class="axis">${fmt(val)}</text>`;
+  });
+  g+=`<path d="${area}" class="area" opacity=".16"/>`;
+  g+=`<path d="${line}" class="line"/>`;
+  svg.innerHTML=`<defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#65a0ff"/><stop offset="1" stop-color="#65a0ff" stop-opacity="0"/></linearGradient></defs>`+g;
+}
+
+function renderWatch(){
+  const body=$("watchBody"); body.innerHTML="";
+  $("watchCount").textContent=`${state.watchlist.length} 檔`;
+  $("emptyWatch").hidden=state.watchlist.length>0;
+  state.watchlist.forEach(code=>{
+    const s=STOCKS[code]; if(!s)return;
+    const pChange = pct(s);
+    const tr=document.createElement("tr"); tr.className="row-click";
+    tr.innerHTML=`<td><span class="stock">${code}</span><span class="company">${s.name}</span></td>
+      <td>${fmt(s.price)}</td><td class="${cls(s.change)}">${s.change>0?"+":""}${fmt(s.change)}</td>
+      <td class="${cls(s.change)}">${s.change>0?"+":""}${pChange.toFixed(2)}%</td>
+      <td>${fmt(s.volume)}</td>
+      <td><button class="star" title="移除自選">★</button></td>`;
+    tr.addEventListener("click",e=>{
+      if(e.target.classList.contains("star")){
+        state.watchlist=state.watchlist.filter(x=>x!==code); renderWatch(); toast(`已移除 ${code}`);
+      }else{
+        state.selected=code; 
+        renderDetail(); 
+        loadChartData();
+      }
+    });
+    body.appendChild(tr);
+  });
+}
+
+function renderDetail(){
+  const s=STOCKS[state.selected]||STOCKS["2330"];
+  if(!s) return;
+  const pChange = pct(s);
+  $("detailCode").innerHTML=`${state.selected} <span class="detail-name">${s.name}</span>`;
+  $("detailPrice").textContent=fmt(s.price);
+  $("detailPrice").className=`detail-price ${cls(s.change)}`;
+  $("detailChange").textContent=`${s.change>0?"+":""}${fmt(s.change)} (${s.change>0?"+":""}${pChange.toFixed(2)}%)`;
+  $("detailChange").className=cls(s.change);
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===state.tab));
+  
+  const c=$("detailContent");
+  if(state.tab==="price") c.innerHTML=`<div class="market-grid">
+    <div class="metric"><div class="name">開盤</div><div class="value">${fmt(s.open)}</div></div>
+    <div class="metric"><div class="name">最高</div><div class="value">${fmt(s.high)}</div></div>
+    <div class="metric"><div class="name">最低</div><div class="value">${fmt(s.low)}</div></div>
+    <div class="metric"><div class="name">成交量</div><div class="value">${fmt(s.volume)} 張</div></div></div>`;
+  if(state.tab==="info") c.innerHTML=`<div class="market-grid">
+    <div class="metric"><div class="name">交易所</div><div class="value" style="font-size:16px">台灣證券交易所</div></div>
+    <div class="metric"><div class="name">產業類別</div><div class="value" style="font-size:16px">上市股票</div></div>
+    <div class="metric"><div class="name">圖表模式</div><div class="value" style="font-size:16px">動態歷史區間</div></div>
+    <div class="metric"><div class="name">連線狀態</div><div class="value" style="font-size:16px">Worker 轉發正常</div></div></div>`;
+  if(state.tab==="chip") c.innerHTML=`<div class="market-grid">
+    <div class="metric"><div class="name">外資買賣超</div><div class="value up">個股專用</div></div>
+    <div class="metric"><div class="name">投信買賣超</div><div class="value up">個股專用</div></div>
+    <div class="metric"><div class="name">自營商買賣超</div><div class="value down">個股專用</div></div>
+    <div class="metric"><div class="name">當日成交值</div><div class="value">${fmt(s.volume * s.price * 1000 / 100000000)} 億</div></div></div>`;
+}
+
+function renderRanks(){
+  const arr=Object.entries(STOCKS).map(([code,s])=>({code,...s,p:pct(s)}));
+  $("riseRank").innerHTML=arr.sort((a,b)=>b.p-a.p).slice(0,5).map(s=>`<li><span>${s.code} ${s.name}</span><b class="${cls(s.change)}">+${s.p.toFixed(2)}%</b></li>`).join("");
+  $("volumeRank").innerHTML=arr.sort((a,b)=>b.volume-a.volume).slice(0,5).map(s=>`<li><span>${s.code} ${s.name}</span><b>${fmt(s.volume)} 張</b></li>`).join("");
+}
+
+function search(){
+  const q=$("searchInput").value.trim().toLowerCase();
+  const box=$("searchResults");
+  if(!q){box.hidden=true;return}
+  const hits=Object.entries(STOCKS).filter(([c,s])=>c.includes(q)||s.name.toLowerCase().includes(q)).slice(0,10);
+  box.innerHTML=hits.length?hits.map(([c,s])=>`<div class="result" data-code="${c}"><b>${c}</b> ${s.name} <span class="${cls(s.change)}">${s.change>0?"+":""}${fmt(s.change)}</span></div>`).join(""):`<div class="result">找不到符合的股票</div>`;
+  box.hidden=false;
+  box.querySelectorAll("[data-code]").forEach(el=>el.addEventListener("click",()=>{
+    $("searchInput").value=el.dataset.code; 
+    state.selected=el.dataset.code; 
+    box.hidden=true; 
+    renderDetail();
+    loadChartData();
+  }));
+}
+
+$("searchInput").addEventListener("input",search);
+$("searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("addBtn").click()});
+$("addBtn").addEventListener("click",()=>{
+  const code=$("searchInput").value.trim();
+  if(!code){toast("請輸入股票代號");return}
+  if(!STOCKS[code]){
+    STOCKS[code] = {name: code, price: 0, change: 0, volume: 0, open: 0, high: 0, low: 0};
+  }
+  if(!state.watchlist.includes(code)){state.watchlist.push(code);toast(`已加入 ${code} ${STOCKS[code].name}`)}
+  state.selected=code; $("searchInput").value="";$("searchResults").hidden=true;
+  fetchWatchlistData();
+  loadChartData();
+});
+$("refreshBtn").addEventListener("click",()=>{
+  toast("正在重新向證交所同步資料...");
+  fetchWatchlistData();
+  loadChartData();
+});
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{state.tab=t.dataset.tab;renderDetail()}));
+
+$("period").addEventListener("change", e => {
+  state.period = e.target.value;
+  loadChartData();
+});
+
+$("exportBtn").addEventListener("click",()=>{
+  const data={version:1,exportedAt:new Date().toISOString(),watchlist:state.watchlist,selected:state.selected};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="taiwan-stock-watchlist.json";a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),500);toast("設定已匯出");
+});
+$("importBtn").addEventListener("click",()=>{
+  $("fileInput").value="";
+  $("fileInput").click();
+});
+
+$("fileInput").addEventListener("change",async e=>{
+  const file=e.target.files?.[0];
+  if(!file)return;
+  try{
+    const text=await file.text();
+    const data=JSON.parse(text);
+    if(!Array.isArray(data.watchlist)) throw new Error();
+    state.watchlist=[...new Set(data.watchlist.map(String))];
+    state.selected=String(data.selected||state.watchlist[0]||"2330");
+    fetchWatchlistData();
+    loadChartData();
+    toast(`已匯入 ${state.watchlist.length} 檔自選股`);
+  }catch(err){toast("匯入失敗：格式不正確");}
+});
+$("clearBtn").addEventListener("click",()=>{
+  if(!state.watchlist.length)return;
+  state.watchlist=[];refreshUI();toast("已清空自選股");
+});
+
+async function init(){
+  await fetchAllStockList();
+  await fetchWatchlistData();
+  await loadChartData();
+  setInterval(fetchWatchlistData, 30000);
+}
+
+init();
+})();
+</script>
+</body>
+</html>

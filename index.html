@@ -41,7 +41,7 @@ button{cursor:pointer}
 .metric .value{font-size:21px;font-weight:800;margin-top:5px}
 .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
 .chart{height:300px;position:relative}
-svg{width:100%;height:100%}
+svg{width:100%;height:100%;overflow:visible}
 .gridline{stroke:#24314a;stroke-width:1}
 .axis{fill:#71809d;font-size:11px}
 .line{fill:none;stroke:#65a0ff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
@@ -113,7 +113,8 @@ svg{width:100%;height:100%}
           <option value="1y">1年</option>
         </select>
       </div>
-      <div class="chart"><svg id="chartSvg" viewBox="0 0 900 300" preserveAspectRatio="none"></svg></div>
+      <!-- 擴大 viewBox 寬度至 950，給右側數字更多空間 -->
+      <div class="chart"><svg id="chartSvg" viewBox="0 0 950 300" preserveAspectRatio="none"></svg></div>
     </section>
 
     <section class="card">
@@ -177,24 +178,23 @@ let state = {
   chartData: []
 };
 
-const $ = id => document.getElementById(id);
+const \$ = id => document.getElementById(id);
 const fmt = n => Number(n).toLocaleString("zh-TW",{maximumFractionDigits:2});
 const pct = s => (s.price && (s.price - s.change) !== 0 ? (s.change / (s.price - s.change) * 100) : 0);
 function cls(n){return n>0?"up":n<0?"down":"flat"}
 
 function toast(msg){
-  const el=$("toast"); el.textContent=msg; el.style.display="block";
+  const el=\$("toast"); el.textContent=msg; el.style.display="block";
   clearTimeout(window.__toast); window.__toast=setTimeout(()=>el.style.display="none",2200);
 }
 
 const baseWorkerUrl = "https://twse-proxy.jingfong0915.workers.dev/";
 
-// 更新走勢區塊的標題函式
 function updateChartTitle() {
   const s = STOCKS[state.selected];
   const name = s ? s.name : state.selected;
   const periodText = {"1d":"1日","5d":"5日","1m":"1月","3m":"3月","1y":"1年"}[state.period];
-  $("chartTitle").textContent = `${state.selected} ${name} 走勢 · ${periodText}`;
+  \$("chartTitle").textContent = `${state.selected} ${name} 走勢 · ${periodText}`;
 }
 
 async function fetchAllStockList() {
@@ -214,7 +214,7 @@ async function fetchAllStockList() {
           STOCKS[code] = { name, price: isNaN(close)?0:close, change: isNaN(changeVal)?0:changeVal, volume: isNaN(vol)?0:Math.round(vol), open:close, high:close, low:close };
         }
       });
-      $("marketUpDown").textContent = `已載入 ${Object.keys(STOCKS).length} 檔台股`;
+      \$("marketUpDown").textContent = `已載入 ${Object.keys(STOCKS).length} 檔台股`;
     }
   } catch (err) { console.warn("全市場清單載入失敗", err); }
 }
@@ -233,7 +233,7 @@ function getMonthsToFetch(period) {
 }
 
 async function loadChartData() {
-  updateChartTitle(); // 確保每次載入時標題都是最新的
+  updateChartTitle();
   const code = state.selected;
   const period = state.period;
   const s = STOCKS[code];
@@ -320,8 +320,8 @@ async function fetchWatchlistData() {
     } catch (err) {}
   }
 
-  $("marketTime").textContent = "最後更新: " + new Date().toLocaleTimeString("zh-TW");
-  $("marketValue").textContent = `${state.watchlist.length} 檔`;
+  \$("marketTime").textContent = "最後更新: " + new Date().toLocaleTimeString("zh-TW");
+  \$("marketValue").textContent = `${state.watchlist.length} 檔`;
   refreshUI();
 }
 
@@ -329,34 +329,41 @@ function refreshUI() {
   renderWatch();
   renderDetail();
   renderRanks();
-  updateChartTitle(); // 重新整理時也同步更新標題
+  updateChartTitle();
 }
 
 function drawChart(){
-  const svg=$("chartSvg");
+  const svg = \$("chartSvg");
   const points = state.chartData.length ? state.chartData : [100, 100];
-  const min=Math.min(...points), max=Math.max(...points), pad=(max-min)*.12||1;
-  const lo=min-pad, hi=max+pad;
-  const x=i=>30+i*(840/(Math.max(points.length-1, 1)));
-  const y=v=>265-(v-lo)/(hi-lo)*230;
-  const line=points.map((v,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)).join(" ");
-  const area=line+" L "+x(points.length-1)+" 270 L 30 270 Z";
-  let g="";
-  [0,1,2,3,4].forEach(i=>{
-    const yy=35+i*57.5;
-    g+=`<line x1="30" y1="${yy}" x2="870" y2="${yy}" class="gridline"/>`;
-    const val=hi-(hi-lo)*(i/4);
-    g+=`<text x="875" y="${yy+4}" class="axis">${fmt(val)}</text>`;
+  const min = Math.min(...points), max = Math.max(...points), pad = (max - min) * .12 || 1;
+  const lo = min - pad, hi = max + pad;
+  
+  // 調整圖表繪製範圍與右側預留寬度 (將最大寬度從 840 縮減至 800，保留空間給右側數字)
+  const x = i => 30 + i * (800 / (Math.max(points.length - 1, 1)));
+  const y = v => 265 - (v - lo) / (hi - lo) * 230;
+  
+  const line = points.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+  const area = line + " L " + x(points.length - 1) + " 270 L 30 270 Z";
+  let g = "";
+
+  [0, 1, 2, 3, 4].forEach(i => {
+    const yy = 35 + i * 57.5;
+    // 格線長度縮短至 830
+    g += `<line x1="30" y1="${yy}" x2="830" y2="${yy}" class="gridline"/>`;
+    const val = hi - (hi - lo) * (i / 4);
+    // 右側數字的 x 座標設為 845，並確保不會被裁切
+    g += `<text x="845" y="${yy + 4}" class="axis">${fmt(val)}</text>`;
   });
-  g+=`<path d="${area}" class="area" opacity=".16"/>`;
-  g+=`<path d="${line}" class="line"/>`;
-  svg.innerHTML=`<defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#65a0ff"/><stop offset="1" stop-color="#65a0ff" stop-opacity="0"/></linearGradient></defs>`+g;
+
+  g += `<path d="${area}" class="area" opacity=".16"/>`;
+  g += `<path d="${line}" class="line"/>`;
+  svg.innerHTML = `<defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#65a0ff"/><stop offset="1" stop-color="#65a0ff" stop-opacity="0"/></linearGradient></defs>` + g;
 }
 
 function renderWatch(){
-  const body=$("watchBody"); body.innerHTML="";
-  $("watchCount").textContent=`${state.watchlist.length} 檔`;
-  $("emptyWatch").hidden=state.watchlist.length>0;
+  const body=\$("watchBody"); body.innerHTML="";
+  \$("watchCount").textContent=`${state.watchlist.length} 檔`;
+  \$("emptyWatch").hidden=state.watchlist.length>0;
   state.watchlist.forEach(code=>{
     const s=STOCKS[code]; if(!s)return;
     const pChange = pct(s);
@@ -383,14 +390,14 @@ function renderDetail(){
   const s=STOCKS[state.selected]||STOCKS["2330"];
   if(!s) return;
   const pChange = pct(s);
-  $("detailCode").innerHTML=`${state.selected} <span class="detail-name">${s.name}</span>`;
-  $("detailPrice").textContent=fmt(s.price);
-  $("detailPrice").className=`detail-price ${cls(s.change)}`;
-  $("detailChange").textContent=`${s.change>0?"+":""}${fmt(s.change)} (${s.change>0?"+":""}${pChange.toFixed(2)}%)`;
-  $("detailChange").className=cls(s.change);
+  \$("detailCode").innerHTML=`${state.selected} <span class="detail-name">${s.name}</span>`;
+  \$("detailPrice").textContent=fmt(s.price);
+  \$("detailPrice").className=`detail-price ${cls(s.change)}`;
+  \$("detailChange").textContent=`${s.change>0?"+":""}${fmt(s.change)} (${s.change>0?"+":""}${pChange.toFixed(2)}%)`;
+  \$("detailChange").className=cls(s.change);
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===state.tab));
   
-  const c=$("detailContent");
+  const c=\$("detailContent");
   if(state.tab==="price") c.innerHTML=`<div class="market-grid">
     <div class="metric"><div class="name">開盤</div><div class="value">${fmt(s.open)}</div></div>
     <div class="metric"><div class="name">最高</div><div class="value">${fmt(s.high)}</div></div>
@@ -410,19 +417,19 @@ function renderDetail(){
 
 function renderRanks(){
   const arr=Object.entries(STOCKS).map(([code,s])=>({code,...s,p:pct(s)}));
-  $("riseRank").innerHTML=arr.sort((a,b)=>b.p-a.p).slice(0,5).map(s=>`<li><span>${s.code} ${s.name}</span><b class="${cls(s.change)}">+${s.p.toFixed(2)}%</b></li>`).join("");
-  $("volumeRank").innerHTML=arr.sort((a,b)=>b.volume-a.volume).slice(0,5).map(s=>`<li><span>${s.code} ${s.name}</span><b>${fmt(s.volume)} 張</b></li>`).join("");
+  \$("riseRank").innerHTML=arr.sort((a,b)=>b.p-a.p).slice(0,5).map(s=>`<li><span>${s.code} ${s.name}</span><b class="${cls(s.change)}">+${s.p.toFixed(2)}%</b></li>`).join("");
+  \$("volumeRank").innerHTML=arr.sort((a,b)=>b.volume-a.volume).slice(0,5).map(s=>`<li><span>${s.code} ${s.name}</span><b>${fmt(s.volume)} 張</b></li>`).join("");
 }
 
 function search(){
-  const q=$("searchInput").value.trim().toLowerCase();
-  const box=$("searchResults");
+  const q=\$("searchInput").value.trim().toLowerCase();
+  const box=\$("searchResults");
   if(!q){box.hidden=true;return}
   const hits=Object.entries(STOCKS).filter(([c,s])=>c.includes(q)||s.name.toLowerCase().includes(q)).slice(0,10);
   box.innerHTML=hits.length?hits.map(([c,s])=>`<div class="result" data-code="${c}"><b>${c}</b> ${s.name} <span class="${cls(s.change)}">${s.change>0?"+":""}${fmt(s.change)}</span></div>`).join(""):`<div class="result">找不到符合的股票</div>`;
   box.hidden=false;
   box.querySelectorAll("[data-code]").forEach(el=>el.addEventListener("click",()=>{
-    $("searchInput").value=el.dataset.code; 
+    \$("searchInput").value=el.dataset.code; 
     state.selected=el.dataset.code; 
     box.hidden=true; 
     renderDetail();
@@ -430,10 +437,10 @@ function search(){
   }));
 }
 
-$("searchInput").addEventListener("input",search);
+\$("searchInput").addEventListener("input",search);
 $("searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("addBtn").click()});
-$("addBtn").addEventListener("click",()=>{
-  const code=$("searchInput").value.trim();
+\$("addBtn").addEventListener("click",()=>{
+  const code=\$("searchInput").value.trim();
   if(!code){toast("請輸入股票代號");return}
   if(!STOCKS[code]){
     STOCKS[code] = {name: code, price: 0, change: 0, volume: 0, open: 0, high: 0, low: 0};
@@ -443,30 +450,30 @@ $("addBtn").addEventListener("click",()=>{
   fetchWatchlistData();
   loadChartData();
 });
-$("refreshBtn").addEventListener("click",()=>{
+\$("refreshBtn").addEventListener("click",()=>{
   toast("正在重新向證交所同步資料...");
   fetchWatchlistData();
   loadChartData();
 });
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{state.tab=t.dataset.tab;renderDetail()}));
 
-$("period").addEventListener("change", e => {
+\$("period").addEventListener("change", e => {
   state.period = e.target.value;
   loadChartData();
 });
 
-$("exportBtn").addEventListener("click",()=>{
+\$("exportBtn").addEventListener("click",()=>{
   const data={version:1,exportedAt:new Date().toISOString(),watchlist:state.watchlist,selected:state.selected};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="taiwan-stock-watchlist.json";a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),500);toast("設定已匯出");
 });
-$("importBtn").addEventListener("click",()=>{
-  $("fileInput").value="";
-  $("fileInput").click();
+\$("importBtn").addEventListener("click",()=>{
+  \$("fileInput").value="";
+  \$("fileInput").click();
 });
 
-$("fileInput").addEventListener("change",async e=>{
+\$("fileInput").addEventListener("change",async e=>{
   const file=e.target.files?.[0];
   if(!file)return;
   try{
@@ -480,7 +487,7 @@ $("fileInput").addEventListener("change",async e=>{
     toast(`已匯入 ${state.watchlist.length} 檔自選股`);
   }catch(err){toast("匯入失敗：格式不正確");}
 });
-$("clearBtn").addEventListener("click",()=>{
+\$("clearBtn").addEventListener("click",()=>{
   if(!state.watchlist.length)return;
   state.watchlist=[];refreshUI();toast("已清空自選股");
 });
